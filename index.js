@@ -14,6 +14,9 @@ let _eventHandlers = {
 };
 
 let Twilio = {
+  setSpeaker(enabled) {
+    TwilioRCT.setSpeaker(enabled);
+  },
   initWithTokenUrl(tokenUrl) {
     TwilioRCT.initWithTokenUrl(tokenUrl);
   },
