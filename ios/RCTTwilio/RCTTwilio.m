@@ -9,6 +9,8 @@
 #import "RCTTwilio.h"
 #import "RCTEventDispatcher.h"
 
+@import AVFoundation;
+
 @implementation RCTTwilio {
     TCDevice* _phone;
     TCConnection* _connection;
