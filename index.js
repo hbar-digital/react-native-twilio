@@ -11,6 +11,9 @@ let _eventHandlers = {
   connectionDidStartConnecting: new Map(),
   connectionDidConnect: new Map(),
   connectionDidDisconnect: new Map(),
+  deviceReady: new Map(),
+  deviceCreationFail: new Map(),
+  deviceUpdated: new Map(),
 };
 
 let Twilio = {

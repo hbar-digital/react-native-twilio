@@ -71,6 +71,8 @@ RCT_EXPORT_METHOD(setSpeaker:(BOOL)enabled) {
 
         BOOL success;
         NSError *error;
+        
+        NSLog(@"Setting speaker %d", enabled);
 
         [session overrideOutputAudioPort:enabled?AVAudioSessionPortOverrideSpeaker:AVAudioSessionPortOverrideNone error:&error];    
         if(error) { 

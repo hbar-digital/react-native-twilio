@@ -1,21 +1,34 @@
 apply plugin: 'com.android.library'
 
 android {
-  compileSdkVersion 23
-  buildToolsVersion "23.0.1"
+    compileSdkVersion 23
+    buildToolsVersion "23.0.1"
 
-  defaultConfig {
-    minSdkVersion 16
-    targetSdkVersion 22
-    versionCode 1
-    versionName "1.0"
-    ndk {
-      abiFilters "armeabi-v7a", "x86"
+    defaultConfig {
+        minSdkVersion 16
+        targetSdkVersion 22
+        versionCode 1
+        versionName "1.0"
+        ndk {
+          abiFilters "armeabi-v7a", "x86"
+        }
     }
-  }
+
+    signingConfigs {
+        debug {
+            storeFile file("${System.env.HOME}/.android/debug.keystore")
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
 }
 
 dependencies {
-  compile 'com.facebook.react:react-native:0.22.+'
-  compile files('libs/twilioclient-android.jar')
+    compile 'com.facebook.react:react-native:+'
+    compile 'com.twilio:client-android:1.2.16'
 }
