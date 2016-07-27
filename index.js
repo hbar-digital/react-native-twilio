@@ -24,10 +24,10 @@ let Twilio = {
     TwilioRCT.initWithTokenUrl(tokenUrl);
   },
   initWithToken(token) {
-    TwilioRCT.initWithToken(token);
+    return TwilioRCT.initWithToken(token);
   },
   connect(params = {}) {
-    TwilioRCT.connect(params);
+    return TwilioRCT.connect(params);
   },
   disconnect() {
     TwilioRCT.disconnect();

@@ -15,6 +15,7 @@ import android.content.BroadcastReceiver;
 import android.app.PendingIntent;
 
 import com.facebook.react.bridge.NativeModule;
+import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
@@ -43,61 +44,28 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class TwilioModule extends ReactContextBaseJavaModule implements ConnectionListener, DeviceListener {
+public class TwilioModule extends ReactContextBaseJavaModule implements DeviceListener, ConnectionListener {
 
     private static final String TAG = TwilioModule.class.getName();
 
-    private ReactContext _reactContext;
-    private Device _phone;
-    private Connection _connection;
-    private Connection _pendingConnection;
-    private IntentReceiver _receiver;
+    private ReactContext reactContext;
+    private Device device;
+    private Connection connection;
+    private Promise connectionPromise;
 
-    public class IntentReceiver extends BroadcastReceiver {
-        private ConnectionListener _cl;
-
-        public IntentReceiver(ConnectionListener connectionListener) {
-            this._cl = connectionListener;
-        }
-
-        public void onReceive(Context context, Intent intent) {
-            Device device = intent.getParcelableExtra(Device.EXTRA_DEVICE);
-            Connection incomingConnection = intent.getParcelableExtra(Device.EXTRA_CONNECTION);
-
-            if (incomingConnection == null && device == null) {
-                return;
-            }
-            intent.removeExtra(Device.EXTRA_DEVICE);
-            intent.removeExtra(Device.EXTRA_CONNECTION);
-
-            _pendingConnection = incomingConnection;
-
-            Map<String, String> connParams = _pendingConnection.getParameters();
-            WritableMap params = Arguments.createMap();
-            for (Map.Entry<String, String> entry : connParams.entrySet()) {
-                params.putString(entry.getKey(), entry.getValue());
-            }
-            sendEvent("deviceDidReceiveIncoming", params);
-        }
-    }
 
     public TwilioModule(ReactApplicationContext reactContext) {
         super(reactContext);
 
-        _reactContext = reactContext;
-        this._reactContext = reactContext;
-        this._receiver = new IntentReceiver(this);
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction("com.rogchap.react.modules.twilio.incoming");
-        this._reactContext.registerReceiver(this._receiver, intentFilter);
+        this.reactContext = reactContext;
     }
 
-    private void sendEvent(String eventName, @Nullable WritableMap params) {
-        getReactApplicationContext()
-                .getJSModule(RCTNativeAppEventEmitter.class)
-                .emit(eventName, params);
-        Log.d(TAG, "event sent " + eventName);
-    }
+    // private void sendEvent(String eventName, @Nullable WritableMap params) {
+    //     getReactApplicationContext()
+    //             .getJSModule(RCTNativeAppEventEmitter.class)
+    //             .emit(eventName, params);
+    //     Log.d(TAG, "event sent " + eventName);
+    // }
 
     @Override
     public String getName() {
@@ -105,214 +73,145 @@ public class TwilioModule extends ReactContextBaseJavaModule implements Connecti
     }
 
     @ReactMethod
-    public void initWithToken(final String token) {
-        final DeviceListener dl = this;
+    public void initWithToken(final String token, final Promise promise) {
 
-        if (!Twilio.isInitialized()) {
-            // Twilio.initialize(_reactContext.getApplicationContext(), new Twilio.InitListener() {
-            Twilio.initialize(_reactContext, new Twilio.InitListener() {
+        if(!Twilio.isInitialized()) {
+
+            Twilio.initialize(reactContext, new Twilio.InitListener() {
+
                 @Override
                 public void onInitialized() {
                     Twilio.setLogLevel(Log.DEBUG);
-                    try {
-                        if (_phone == null) {
-                            _phone = Twilio.createDevice(token, dl);
-                            /*
-                             * Providing a PendingIntent to the newly create Device, allowing you to receive incoming calls
-                             *
-                             *  What you do when you receive the intent depends on the component you set in the Intent.
-                             *
-                             *  If you're using an Activity, you'll want to override Activity.onNewIntent()
-                             *  If you're using a Service, you'll want to override Service.onStartCommand().
-                             *  If you're using a BroadcastReceiver, override BroadcastReceiver.onReceive().
-                             */
-                            Intent intent = new Intent();
-                            intent.setAction("com.rogchap.react.modules.twilio.incoming");
-                            PendingIntent pi = PendingIntent.getBroadcast(_reactContext, 0, intent, 0);
-                            _phone.setIncomingIntent(pi);
-                            sendEvent("deviceReady", null);
-                        } else {
-                            _phone.updateCapabilityToken(token);
-                            sendEvent("deviceUpdated", null);
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, e.getMessage());
-                    }
+
+                    createDevice(token, promise);
                 }
 
                 @Override
                 public void onError(Exception e) {
                     Log.e(TAG, e.getMessage());
+
+                    promise.reject(e);
                 }
             });
         } else {
-            sendEvent("deviceReady", null);
+            createDevice(token, promise);
         }
     }
 
-    @ReactMethod
-    public void initWithTokenUrl(String tokenUrl) {
-        StringBuilder sb = new StringBuilder();
+    private void createDevice(String capabilityToken, Promise promise) {
         try {
-            URLConnection conn = new URL(tokenUrl).openConnection();
-            InputStream in = conn.getInputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-            String line = reader.readLine();
-            while (line != null) {
-                sb.append(line);
+            if (device == null) {
+                device = Twilio.createDevice(capabilityToken, this);
+            } else {
+                device.updateCapabilityToken(capabilityToken);
             }
-            // String line = "";
-            // while ((line = reader.readLine()) != null) {
-            //   sb.append(line);
-            // }
+
+            promise.resolve(Arguments.createMap());
         } catch (Exception e) {
-            Log.e(TAG, e.getMessage());
+            Log.e(TAG, "An error has occured updating or creating a Device: \n" + e.toString());
+            
+            promise.reject(e);
         }
-        initWithToken(sb.toString());
     }
 
     @ReactMethod
-    public void connect(ReadableMap readableMap) {
-        if (_phone != null) {
-            _connection = _phone.connect(covnertToNativeMap(readableMap), this);
+    public void connect(ReadableMap params, Promise promise) {
+        if (device != null) {
+            connectionPromise = promise;
+            connection = device.connect(toMap(params), this);
         } else {
-            Log.e(TAG, "Device is null");
-            WritableMap errors = Arguments.createMap();
-            errors.putString("err", "Device is null");
-            sendEvent("connectionDidFail", errors);
+            promise.reject("device is null");
         }
     }
 
-    private Map<String, String> covnertToNativeMap(ReadableMap readableMap) {
-        Map<String, String> hashMap = new HashMap<String, String>();
-        ReadableMapKeySetIterator iterator = readableMap.keySetIterator();
+    @ReactMethod
+    public void disconnect(Promise promise) {
+        if (connection != null) {
+          // connectionPromise = promise;
+
+          connection.disconnect();
+          promise.resolve(Arguments.createMap());
+        }
+    }
+
+
+
+
+    public static Map<String, String> toMap(ReadableMap readableMap) {
+        if (readableMap == null) {
+            return null;
+        }
+
+        com.facebook.react.bridge.ReadableMapKeySetIterator iterator = readableMap.keySetIterator();
+        if (!iterator.hasNextKey()) {
+            return null;
+        }
+
+        Map<String, String> result = new HashMap<>();
         while (iterator.hasNextKey()) {
             String key = iterator.nextKey();
-            ReadableType readableType = readableMap.getType(key);
-            switch (readableType) {
-                case String:
-                    hashMap.put(key, readableMap.getString(key));
-                    break;
-                case Boolean:
-                    hashMap.put(key, readableMap.getBoolean(key) ? "1" : "0");
-                    break;
-                default:
-                    throw new IllegalArgumentException("Could not convert object with key: " + key + ".");
-            }
+            result.put(key, readableMap.getString(key));
         }
-        return hashMap;
+
+        return result;
     }
 
-    @ReactMethod
-    public void disconnect() {
-        if (_connection != null) {
-            _connection.disconnect();
-            _connection = null;
-        }
-    }
-
-    @ReactMethod
-    public void accept() {
-        _pendingConnection.accept();
-        _pendingConnection.setConnectionListener(_receiver._cl);
-        _connection = _pendingConnection;
-        _pendingConnection = null;
-    }
-
-    @ReactMethod
-    public void ignore() {
-        _pendingConnection.ignore();
-    }
-
-    @ReactMethod
-    public void reject() {
-        _pendingConnection.reject();
-    }
-
-    @ReactMethod
-    public void setMuted(Boolean isMuted) {
-        if (_connection != null && _connection.getState() == Connection.State.CONNECTED) {
-            _connection.setMuted(isMuted);
-        }
-    }
 
     /* Device Listener */
     @Override
     public void onStartListening(Device device) {
         Log.d(TAG, "Device has started listening for incoming connections");
-        sendEvent("deviceDidStartListening", null);
     }
 
-    /* Device Listener */
     @Override
     public void onStopListening(Device device) {
         Log.d(TAG, "Device has stopped listening for incoming connections");
-        sendEvent("deviceDidStopListening", null);
     }
 
-    /* Device Listener */
     @Override
     public void onStopListening(Device device, int errorCode, String error) {
-        Log.e(TAG, String.format("Device has encountered an error and has stopped" +
-                " listening for incoming connections: %s", error));
-        sendEvent("deviceDidStopListening", null);
+        Log.e(TAG, String.format("Device has encountered an error and has stopped listening for incoming connections: %s", error));
     }
 
-    /* Device Listener */
     @Override
     public boolean receivePresenceEvents(Device device) {
         return false;
     }
 
-    /* Device Listener */
     @Override
     public void onPresenceChanged(Device device, PresenceEvent presenceEvent) {
-
     }
+
+
 
     /* ConnectionListener */
 
-    @Override
-    public void onConnecting(Connection connection) {
-        Map<String, String> connParams = connection.getParameters();
-        WritableMap params = Arguments.createMap();
-        for (Map.Entry<String, String> entry : connParams.entrySet()) {
-            params.putString(entry.getKey(), entry.getValue());
-        }
-        sendEvent("connectionDidStartConnecting", params);
-    }
+  @Override
+  public void onConnecting(Connection connection) {
+    Log.d(TAG, "onConnecting <------------------");
+  }
 
-    @Override
-    public void onConnected(Connection connection) {
-        Map<String, String> connParams = connection.getParameters();
-        WritableMap params = Arguments.createMap();
-        for (Map.Entry<String, String> entry : connParams.entrySet()) {
-            params.putString(entry.getKey(), entry.getValue());
-        }
-        sendEvent("connectionDidConnect", params);
-    }
+  @Override
+  public void onConnected(Connection connection) {
+    Log.d(TAG, "onConnected <------------------");
+    // connectionPromise.resolve(Arguments.createMap());
+  }
 
-    @Override
-    public void onDisconnected(Connection connection) {
-        if (connection == _connection) {
-            _connection = null;
-        }
-        if (connection == _pendingConnection) {
-            _pendingConnection = null;
-        }
-        Map<String, String> connParams = connection.getParameters();
-        WritableMap params = Arguments.createMap();
-        for (Map.Entry<String, String> entry : connParams.entrySet()) {
-            params.putString(entry.getKey(), entry.getValue());
-        }
-        sendEvent("connectionDidDisconnect", params);
+  @Override
+  public void onDisconnected(Connection connection) {
+    Log.d(TAG, "onDisconnected <------------------");
+    if (connection == this.connection) {
+        // connectionPromise.resolve(Arguments.createMap());
+        this.connection = null;
     }
+  }
 
-    @Override
-    public void onDisconnected(Connection connection, int errorCode, String errorMessage) {
-        WritableMap errors = Arguments.createMap();
-        errors.putString("err", errorMessage);
-        sendEvent("connectionDidFail", errors);
-    }
+  @Override
+  public void onDisconnected(Connection connection, int errorCode, String errorMessage) {
+    Log.d(TAG, "onDisconnected error <------------------");
+    // Map errors = new HashMap();
+    // errors.put("err", errorMessage);
+    // sendEvent("connectionDidFail", errors);
+  }
 
 }
