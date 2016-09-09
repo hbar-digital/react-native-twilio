@@ -32,12 +32,14 @@ RCT_EXPORT_METHOD(initWithTokenUrl:(NSString *) tokenUrl) {
     }
 }
 
-RCT_EXPORT_METHOD(initWithToken:(NSString *) token) {
+RCT_EXPORT_METHOD(initWithToken:(NSString *) token resolver:(RCTPromiseResolveBlock) resolve rejecter:(RCTPromiseRejectBlock) reject) {
     _phone = [[TCDevice alloc] initWithCapabilityToken:token delegate:self];
+    resolve(@"success");
 }
 
-RCT_EXPORT_METHOD(connect:(NSDictionary *) params) {
+RCT_EXPORT_METHOD(connect:(NSDictionary *) params resolver:(RCTPromiseResolveBlock) resolve rejecter:(RCTPromiseRejectBlock) reject) {
     _connection = [_phone connect:params delegate:self];
+    resolve(@"success");
 }
 
 RCT_EXPORT_METHOD(disconnect) {
@@ -66,16 +68,16 @@ RCT_EXPORT_METHOD(setMuted:(BOOL)isMuted) {
 
 RCT_EXPORT_METHOD(setSpeaker:(BOOL)enabled) {
     if (_connection && _connection.state == TCConnectionStateConnected) {
-        
+
         AVAudioSession *session = [AVAudioSession sharedInstance];
 
         BOOL success;
         NSError *error;
-        
+
         NSLog(@"Setting speaker %d", enabled);
 
-        [session overrideOutputAudioPort:enabled?AVAudioSessionPortOverrideSpeaker:AVAudioSessionPortOverrideNone error:&error];    
-        if(error) { 
+        [session overrideOutputAudioPort:enabled?AVAudioSessionPortOverrideSpeaker:AVAudioSessionPortOverrideNone error:&error];
+        if(error) {
             NSLog(@"Error: AudioSession cannot use speakers");
         }
     }
@@ -123,7 +125,7 @@ RCT_EXPORT_METHOD(setSpeaker:(BOOL)enabled) {
     if (connection == _connection) {
         _connection = nil;
     }
-    
+
     if (connection == _pendingConnection) {
         _pendingConnection = nil;
     }

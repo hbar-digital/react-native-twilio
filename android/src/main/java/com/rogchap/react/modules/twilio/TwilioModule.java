@@ -14,6 +14,8 @@ import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
 import android.app.PendingIntent;
 
+import android.media.AudioManager;
+
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -26,6 +28,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.RCTNativeAppEventEmitter;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 
 import com.twilio.client.Connection;
@@ -109,7 +112,7 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
             promise.resolve(Arguments.createMap());
         } catch (Exception e) {
             Log.e(TAG, "An error has occured updating or creating a Device: \n" + e.toString());
-            
+
             promise.reject(e);
         }
     }
@@ -134,6 +137,13 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
         }
     }
 
+    @ReactMethod
+    public void setSpeaker(boolean enabled) {
+        AudioManager audioManager = (AudioManager) getCurrentActivity().getBaseContext().getSystemService(Context.AUDIO_SERVICE);
+
+        audioManager.setSpeakerphoneOn(enabled);
+    }
+
 
 
 
@@ -154,6 +164,15 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
         }
 
         return result;
+    }
+
+
+    public static void sendEvent(ReactContext reactContext, String eventName, Object params) {
+        if (reactContext != null)
+            reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                    .emit(eventName, params);
+        else
+            Log.e(TAG, "Could not submit event for a null context...");
     }
 
 
@@ -194,6 +213,11 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
   @Override
   public void onConnected(Connection connection) {
     Log.d(TAG, "onConnected <------------------");
+
+    WritableMap params = Arguments.createMap();
+    params.putString("CallSid", connection.getParameters().get(Connection.IncomingParameterCallSIDKey));
+
+    sendEvent(reactContext, "connectionDidConnect", params);
     // connectionPromise.resolve(Arguments.createMap());
   }
 
