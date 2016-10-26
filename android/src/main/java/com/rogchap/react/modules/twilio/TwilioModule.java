@@ -15,6 +15,7 @@ import android.content.BroadcastReceiver;
 import android.app.PendingIntent;
 
 import android.media.AudioManager;
+import android.os.Handler;
 
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.Promise;
@@ -56,6 +57,8 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
     private Connection connection;
     private Promise connectionPromise;
 
+    private DeviceEventManagerModule.RCTDeviceEventEmitter eventEmitter;
+
 
     public TwilioModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -63,12 +66,62 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
         this.reactContext = reactContext;
     }
 
-    // private void sendEvent(String eventName, @Nullable WritableMap params) {
-    //     getReactApplicationContext()
-    //             .getJSModule(RCTNativeAppEventEmitter.class)
-    //             .emit(eventName, params);
-    //     Log.d(TAG, "event sent " + eventName);
-    // }
+
+    public void sendEvent(String eventName, @Nullable WritableMap params) {
+      // This should avoid the crash in getJSModule() at startup
+      // See also: https://github.com/walmartreact/react-native-orientation-listener/issues/8
+
+      ReactApplicationContext context = getReactApplicationContext();
+      Handler mainHandler = new Handler(context.getMainLooper());
+
+      Runnable poller = new Runnable() {
+
+        private Runnable init(ReactApplicationContext _context, Handler _mainHandler, String _eventName, WritableMap _params) {
+          mMainHandler = _mainHandler;
+          mEventName = _eventName;
+          mContext = _context;
+          mParams = _params;
+          return this;
+        }
+
+        final int pollDelayInMs = 100;
+        final int maxTries = 300;
+
+        int tries = 1;
+        String mEventName;
+        WritableMap mParams;
+        Handler mMainHandler;
+        ReactApplicationContext mContext;
+
+        @Override
+        public void run() {
+          try {
+            Log.d(TAG, "Catalyst instance poller try " + Integer.toString(tries));
+            if (mContext.hasActiveCatalystInstance()) {
+              Log.d(TAG, "Catalyst instance active");
+              mContext
+              .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+              .emit(mEventName, mParams);
+            } else {
+              tries++;
+              if (tries <= maxTries) {
+                mMainHandler.postDelayed(this, pollDelayInMs);
+              } else {
+                Log.e(TAG, "Could not get Catalyst instance");
+              }
+            }
+          }
+          catch (Exception e) {
+            e.printStackTrace();
+          }
+        }
+      }.init(context, mainHandler, eventName, params);
+
+      Log.d("HBAR", "sendRNEvent");
+
+      mainHandler.post(poller);
+    }
+
 
     @Override
     public String getName() {
@@ -167,13 +220,7 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
     }
 
 
-    public static void sendEvent(ReactContext reactContext, String eventName, Object params) {
-        if (reactContext != null)
-            reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                    .emit(eventName, params);
-        else
-            Log.e(TAG, "Could not submit event for a null context...");
-    }
+
 
 
     /* Device Listener */
@@ -212,12 +259,17 @@ public class TwilioModule extends ReactContextBaseJavaModule implements DeviceLi
 
   @Override
   public void onConnected(Connection connection) {
-    Log.d(TAG, "onConnected <------------------");
+    Log.d(TAG, "onConnected! <------------------");
 
-    WritableMap params = Arguments.createMap();
-    params.putString("CallSid", connection.getParameters().get(Connection.IncomingParameterCallSIDKey));
+    // WritableMap params = Arguments.createMap();
+    // Log.d(TAG, "onConnected 2 <------------------");
+    // params.putString("CallSid", connection.getParameters().get(Connection.IncomingParameterCallSIDKey));
 
-    sendEvent(reactContext, "connectionDidConnect", params);
+    // Log.d(TAG, "onConnected 3 <------------------");
+    sendEvent("connectionDidConnect", null);
+
+    Log.d(TAG, "connectionDidConnect <------------------");
+    // Log.d(TAG, "onConnected 4 <------------------");
     // connectionPromise.resolve(Arguments.createMap());
   }
 
